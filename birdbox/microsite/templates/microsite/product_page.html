@@ -33,9 +33,12 @@
         </li>
     {% endfor %}
   </ul>
-{% elif translation_error %}
-  <div>
-    <p>Error fetching translations: {{ translation_error }}</p>
+{% elif request.GET.search %}
+  <div class="tm-entries">
+    <p class="tm-entry">No translations found matching your search.</p>
+    {% if translation_error %}
+    <p class="tm-entry">Error fetching translations: {{ translation_error }}</p>
+    {% endif %}
   </div>
 {% endif %}
 
