@@ -4,6 +4,7 @@
 
 from bs4 import BeautifulSoup
 from typing import List
+from urllib.parse import urlparse
 
 from django import forms
 from django.conf import settings
@@ -70,6 +71,7 @@ import requests
 import feedparser
 
 ALL = "__all__"
+PONTOON_API = "https://pontoon.mozilla.org/api/v2/search/tm/"
 
 
 class ProtocolLayout(TextChoices):
@@ -796,6 +798,42 @@ class ProductPage(BaseProtocolPage):
             "the title from that for the H1)"
         )
 
+    def _fetch_tm(self, *, search: str, locale: str, next_url: str | None = None):
+        """
+        Fetches results from Pontoon TM search.
+        Returns (results, next_url).
+        """
+        try:
+            if next_url:
+                # Safety: only allow Pontoon's host
+                next_parsed = urlparse(next_url)
+                pontoon_parsed = urlparse(PONTOON_API)
+                if next_parsed.hostname != pontoon_parsed.hostname:
+                    raise ValueError("Invalid next URL host")
+
+                resp = requests.get(next_url)
+            else:
+                resp = requests.get(
+                    PONTOON_API,
+                    params={"text": search, "locale": locale},
+                )
+
+            data = resp.json()
+            results = data.get("results", [])
+
+            # Enrich with project metadata
+            project_names = {p.slug: p.name for p in PontoonProject.objects.all()}
+            disabled = {p.slug for p in PontoonProject.objects.all() if p.disabled}
+            for item in results:
+                slug = item.get("project")
+                item["project_name"] = project_names.get(slug, slug)
+                item["project_disabled"] = slug in disabled
+
+            return results, data.get("next", "")
+        except Exception as e:
+            # In JSON path we’ll return 400; in HTML path we’ll show an error
+            raise
+
     def get_context(self, request, *args, **kwargs):
         context = super().get_context(request, *args, **kwargs)
         context["locales"] = PontoonLocale.objects.all().order_by("name")
@@ -804,24 +842,10 @@ class ProductPage(BaseProtocolPage):
         locale = request.GET.get("locale", "en-GB")
 
         if search:
-            url = "https://pontoon.mozilla.org/api/v2/search/tm/"
-
-            params = {
-                "text": search,
-                "locale": locale
-            }
-
             try:
-                response = requests.get(url, params=params)
-                search_results = response.json().get("results", [])
-                project_names = {p.slug: p.name for p in PontoonProject.objects.all()}
-                disabled_projects = [p.slug for p in PontoonProject.objects.all() if p.disabled]
-
-                for item in search_results:
-                    item["project_name"] = project_names.get(item["project"], item["project"])
-                    item["project_disabled"] = item["project"] in disabled_projects
-
-                context["search_results"] = search_results
+                results, next_url = self._fetch_tm(search=search, locale=locale)
+                context["next"] = next_url
+                context["search_results"] = results
             except Exception as e:
                 context["error"] = str(e)
                 context["search_results"] = []

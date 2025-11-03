@@ -17,21 +17,7 @@
 
 {% if search_results %}
   <ul class="tm-entries">
-    {% for item in search_results %}
-        <li class="tm-entry">
-          <p class="source">{{ item.source|highlight:request.GET.search }}</p>
-          <p class="target">{{ item.target|highlight:request.GET.search }}</p>
-          {% if item.project %}
-          <p class="project">
-            {% if item.entity and not item.project_disabled %}
-            <a href="https://pontoon.mozilla.org/projects/{{ item.project }}/all-resources/?string={{ item.entity }}">{{ item.project_name }}</a>
-            {% else %}
-            <span>{{ item.project_name }}</span>
-            {% endif %}
-          </p>
-          {% endif %}
-        </li>
-    {% endfor %}
+    {% include "microsite/partials/tm_entries_items.html" with search_results=search_results search=request.GET.search %}
   </ul>
 {% elif request.GET.search %}
   <div class="tm-entries">
